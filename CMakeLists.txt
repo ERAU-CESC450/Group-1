@@ -17,12 +17,12 @@ endif()
 
 add_library(rtos_shim
   rtos/rtos_shim.cpp
-)
+ "src/tasks/TaskA.cpp")
 target_include_directories(rtos_shim PUBLIC include rtos)
 
 add_executable(rtos_app
   src/main.cpp
-)
+ "src/tasks/TaskA.cpp")
 target_link_libraries(rtos_app PRIVATE rtos_shim)
 
 # Helpful output

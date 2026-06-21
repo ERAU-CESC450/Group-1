@@ -28,6 +28,7 @@
 #include <iostream>
 
 #include "rtos_api.h"
+#include "TaskA.h"
 
 // -----------------------------------------------------------------------------
 // Module 2: Baseline demo tasks (host RTOS shim)
@@ -105,5 +106,19 @@ int main()
   // In a real RTOS this often never returns. In this host shim it returns when
   // the demo tasks complete.
   std::cout << "\nScheduler exited (all tasks completed). Baseline OK.\n";
+
+  int num1;
+  int num2;
+
+
+  std::cout << "\n\n=====================================================\n";
+  std::cout << "\t\tTask A : \n";
+  std::cout << "Enter number 1 : ";
+  std::cin >> num1;
+  std::cout << "Enter number 2: ";
+  std::cin >> num2;
+  std::cout << "Result: " << RunAddition(num1, num2)<<std::endl;
+  vTaskDelay(2000);
+  PrintTaskOccured();
   return 0;
 }
