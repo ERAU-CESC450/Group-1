@@ -15,14 +15,20 @@ if(ENABLE_WARNINGS)
   endif()
 endif()
 
+# Define the rtos_shim library
 add_library(rtos_shim
   rtos/rtos_shim.cpp
- "src/tasks/TaskA.cpp")
+)
 target_include_directories(rtos_shim PUBLIC include rtos)
 
+# Define the main application and include all task files
 add_executable(rtos_app
   src/main.cpp
- "src/tasks/TaskA.cpp")
+  src/tasks/TaskA.cpp
+  src/tasks/TaskB.cpp
+)
+
+# Link the shim library to your application
 target_link_libraries(rtos_app PRIVATE rtos_shim)
 
 # Helpful output
