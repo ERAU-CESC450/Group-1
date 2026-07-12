@@ -36,7 +36,7 @@
 			{
 				"command" : 0,
 				"file" : 0,
-				"line" : 18,
+				"line" : 19,
 				"parent" : 0
 			},
 			{
@@ -48,7 +48,7 @@
 			{
 				"command" : 2,
 				"file" : 0,
-				"line" : 21,
+				"line" : 22,
 				"parent" : 0
 			}
 		]
@@ -75,11 +75,11 @@
 			[
 				{
 					"backtrace" : 3,
-					"path" : "C:/Users/Raydog/source/repos/Group_1(use_new)/include"
+					"path" : "C:/Users/Raydog/source/repos/Group-1/include"
 				},
 				{
 					"backtrace" : 3,
-					"path" : "C:/Users/Raydog/source/repos/Group_1(use_new)/rtos"
+					"path" : "C:/Users/Raydog/source/repos/Group-1/rtos"
 				}
 			],
 			"language" : "CXX",
@@ -93,8 +93,7 @@
 			},
 			"sourceIndexes" : 
 			[
-				0,
-				1
+				0
 			]
 		}
 	],
@@ -112,8 +111,7 @@
 			"name" : "Source Files",
 			"sourceIndexes" : 
 			[
-				0,
-				1
+				0
 			]
 		}
 	],
@@ -123,12 +121,6 @@
 			"backtrace" : 1,
 			"compileGroupIndex" : 0,
 			"path" : "rtos/rtos_shim.cpp",
-			"sourceGroupIndex" : 0
-		},
-		{
-			"backtrace" : 1,
-			"compileGroupIndex" : 0,
-			"path" : "src/tasks/TaskA.cpp",
 			"sourceGroupIndex" : 0
 		}
 	],
