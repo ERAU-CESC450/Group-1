@@ -1,7 +1,7 @@
 # ninja log v7
-21	495	8037087200872305	CMakeFiles/rtos_app.dir/src/main.cpp.obj	f10497ac99d6e6de
-7	757	8037048762571087	CMakeFiles/rtos_shim.dir/rtos/rtos_shim.cpp.obj	74e6ed97fd5fd915
-536	588	8037086850165126	rtos_shim.lib	74a4721f796e9323
-496	650	8037087205622284	rtos_app.exe	763b7cb9e5854a7c
-27	528	8037086845075132	CMakeFiles/rtos_app.dir/src/tasks/TaskA.cpp.obj	2e1c3ae876aa5fab
-21	536	8037086845005122	CMakeFiles/rtos_shim.dir/src/tasks/TaskA.cpp.obj	cfcf4d522ef97c47
+15	569	8055208290918657	CMakeFiles/rtos_app.dir/src/main.cpp.obj	3cf6b3a6d565e0ca
+20	574	8055208290968667	CMakeFiles/rtos_app.dir/src/tasks/TaskA.cpp.obj	6fcae507f738dd65
+27	582	8055208291038656	CMakeFiles/rtos_app.dir/src/tasks/TaskB.cpp.obj	a8d99ce85c981430
+7	779	8055208290838673	CMakeFiles/rtos_shim.dir/rtos/rtos_shim.cpp.obj	2a1841f89319aee5
+779	840	8055208298558677	rtos_shim.lib	f3fb7b0abee12e4f
+840	1243	8055208299170720	rtos_app.exe	fe3521211974329b
