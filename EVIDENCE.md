@@ -105,6 +105,10 @@ Suggested evidence:
 - Output showing producer/consumer message exchange
 - Notes explaining queue size and blocking decisions
 
+
+<img width="964" height="520" alt="image" src="https://github.com/user-attachments/assets/07091ffd-1939-41cc-9ad0-c34f6bc9c473" />
+
+- Added IPC requirements that track communication between tasks and handle message queues and shared resource handling.
 ---
 
 ### Module 7 – Interrupts, Signals, and Event-Driven Behavior
