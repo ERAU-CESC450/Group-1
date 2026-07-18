@@ -9,6 +9,9 @@
 build/*
 !build/README.md
 
+#VS CMAKE files
+out/
+
 # Generic build outputs
 *.o
 *.obj
