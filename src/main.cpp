@@ -25,37 +25,49 @@
  */
 
 
-//Module 6 
+//Module 6 IPC 
 #include <iostream>
 #include "rtos_api.h"
-#include "TaskA.h"
-#include "TaskB.h"
+#include "tasks.h"
+#include "watchdog.h"
+#include "heartbeat.h"
+#include "ipc.h"
+#include "safe_log.h"
+#include "log_worker.h"
+#include "producer.h"
+#include "consumer.h"
+
+
 
 int main()
 {
     std::cout << "=====================================================\n";
-    std::cout << "CESC 450 Module 3 - Concurrent Avionics RTOS Active\n";
+    std::cout << "CESC 450 Module 6 Messages & IPC\n";
     std::cout << "=====================================================\n\n";
 
-    // Create Task A (Telemetry Simulation)
-    if (!xTaskCreate(vTaskA, "Task_A", 256, nullptr, 1, nullptr))
+    SafeLogInit();
+    IpcInit(3);
+
+    static const char* kProducer = "Producer";
+    static const char* kConsumer = "Consumer";
+
+    TaskHandle_t p = nullptr;
+	TaskHandle_t c = nullptr;
+
+    if (!xTaskCreate(SensorProducerTask, "Producer,", 256, (void*)kProducer, 2, &p) ||
+        !xTaskCreate(LoggerConsumerTask, "Consumer", 256, (void*)kConsumer, 1, &c))
     {
-        std::cerr << "CRITICAL: Failed to create Task A\n";
+        std::cerr << "Failed to create IPC tasks\n";
+        IpcShutdown();
+        SafeLogShutdown();
         return 1;
     }
-
-    // Create Task B (System Monitor)
-    if (!xTaskCreate(vTaskB, "Task_B", 256, nullptr, 1, nullptr))
-    {
-        std::cerr << "CRITICAL: Failed to create Task B\n";
-        return 1;
-    }
-
-    std::cout << "Starting background RTOS scheduler...\n\n";
+    
+    std::cout << "Starting scheduler...\n";
     vTaskStartScheduler();
 
-    // The host shim runs until execution stops or tasks finish
-    std::cout << "\nScheduler exited gracefully.\n";
+    std::cout << "\nScheduler exited (all tasks completed). Baseline OK.\n";
+
     return 0;
 }
 

@@ -42,14 +42,14 @@
 				{
 					"directoryIndex" : 0,
 					"id" : "rtos_app::@6890427a1f51a3e7e1df",
-					"jsonFile" : "target-rtos_app-Debug-3332c724a553b37a7a5a.json",
+					"jsonFile" : "target-rtos_app-Debug-67cae07953063d805beb.json",
 					"name" : "rtos_app",
 					"projectIndex" : 0
 				},
 				{
 					"directoryIndex" : 0,
 					"id" : "rtos_shim::@6890427a1f51a3e7e1df",
-					"jsonFile" : "target-rtos_shim-Debug-9c4596bc8922c06d381f.json",
+					"jsonFile" : "target-rtos_shim-Debug-97d83b4ffde7a89bd601.json",
 					"name" : "rtos_shim",
 					"projectIndex" : 0
 				}
@@ -59,8 +59,8 @@
 	"kind" : "codemodel",
 	"paths" : 
 	{
-		"build" : "C:/Users/Raydog/source/repos/Group_1(use_new)/out/build/x64-Debug",
-		"source" : "C:/Users/Raydog/source/repos/Group_1(use_new)"
+		"build" : "C:/Users/Raydog/source/repos/Group-1/out/build/x64-Debug",
+		"source" : "C:/Users/Raydog/source/repos/Group-1"
 	},
 	"version" : 
 	{

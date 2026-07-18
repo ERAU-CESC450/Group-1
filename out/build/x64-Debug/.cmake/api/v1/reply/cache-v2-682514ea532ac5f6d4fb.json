@@ -11,7 +11,7 @@
 				}
 			],
 			"type" : "STATIC",
-			"value" : "C:/Users/Raydog/source/repos/Group_1(use_new)/out/build/x64-Debug"
+			"value" : "C:/Users/Raydog/source/repos/Group-1/out/build/x64-Debug"
 		},
 		{
 			"name" : "CESC450_RTOs_Baseline_IS_TOP_LEVEL",
@@ -35,7 +35,7 @@
 				}
 			],
 			"type" : "STATIC",
-			"value" : "C:/Users/Raydog/source/repos/Group_1(use_new)"
+			"value" : "C:/Users/Raydog/source/repos/Group-1"
 		},
 		{
 			"name" : "CMAKE_AR",
@@ -51,7 +51,7 @@
 				}
 			],
 			"type" : "FILEPATH",
-			"value" : "D:/Visual Studio/VS.1/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/lib.exe"
+			"value" : "C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/lib.exe"
 		},
 		{
 			"name" : "CMAKE_BUILD_TYPE",
@@ -75,7 +75,7 @@
 				}
 			],
 			"type" : "INTERNAL",
-			"value" : "c:/Users/Raydog/source/repos/Group_1(use_new)/out/build/x64-Debug"
+			"value" : "c:/Users/Raydog/source/repos/Group-1/out/build/x64-Debug"
 		},
 		{
 			"name" : "CMAKE_CACHE_MAJOR_VERSION",
@@ -123,7 +123,7 @@
 				}
 			],
 			"type" : "INTERNAL",
-			"value" : "D:/Visual Studio/VS.1/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe"
+			"value" : "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe"
 		},
 		{
 			"name" : "CMAKE_CPACK_COMMAND",
@@ -135,7 +135,7 @@
 				}
 			],
 			"type" : "INTERNAL",
-			"value" : "D:/Visual Studio/VS.1/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cpack.exe"
+			"value" : "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cpack.exe"
 		},
 		{
 			"name" : "CMAKE_CTEST_COMMAND",
@@ -147,7 +147,7 @@
 				}
 			],
 			"type" : "INTERNAL",
-			"value" : "D:/Visual Studio/VS.1/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/ctest.exe"
+			"value" : "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/ctest.exe"
 		},
 		{
 			"name" : "CMAKE_CXX_COMPILER",
@@ -159,11 +159,11 @@
 				},
 				{
 					"name" : "HELPSTRING",
-					"value" : "No help, variable specified on the command line."
+					"value" : "CXX compiler"
 				}
 			],
-			"type" : "FILEPATH",
-			"value" : "D:/Visual Studio/VS.1/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/cl.exe"
+			"type" : "STRING",
+			"value" : "C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/cl.exe"
 		},
 		{
 			"name" : "CMAKE_CXX_FLAGS",
@@ -271,11 +271,11 @@
 				},
 				{
 					"name" : "HELPSTRING",
-					"value" : "No help, variable specified on the command line."
+					"value" : "C compiler"
 				}
 			],
-			"type" : "FILEPATH",
-			"value" : "D:/Visual Studio/VS.1/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/cl.exe"
+			"type" : "STRING",
+			"value" : "C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/cl.exe"
 		},
 		{
 			"name" : "CMAKE_C_FLAGS",
@@ -519,7 +519,7 @@
 				}
 			],
 			"type" : "STATIC",
-			"value" : "C:/Users/Raydog/source/repos/Group_1(use_new)/out/build/x64-Debug/CMakeFiles/pkgRedirects"
+			"value" : "C:/Users/Raydog/source/repos/Group-1/out/build/x64-Debug/CMakeFiles/pkgRedirects"
 		},
 		{
 			"name" : "CMAKE_GENERATOR",
@@ -579,7 +579,7 @@
 				}
 			],
 			"type" : "INTERNAL",
-			"value" : "C:/Users/Raydog/source/repos/Group_1(use_new)"
+			"value" : "C:/Users/Raydog/source/repos/Group-1"
 		},
 		{
 			"name" : "CMAKE_INSTALL_PREFIX",
@@ -591,7 +591,7 @@
 				}
 			],
 			"type" : "PATH",
-			"value" : "C:/Users/Raydog/source/repos/Group_1(use_new)/out/install/x64-Debug"
+			"value" : "C:/Users/Raydog/source/repos/Group-1/out/install/x64-Debug"
 		},
 		{
 			"name" : "CMAKE_LINKER",
@@ -607,7 +607,7 @@
 				}
 			],
 			"type" : "FILEPATH",
-			"value" : "D:/Visual Studio/VS.1/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/link.exe"
+			"value" : "C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/link.exe"
 		},
 		{
 			"name" : "CMAKE_LIST_FILE_NAME",
@@ -631,7 +631,7 @@
 				}
 			],
 			"type" : "FILEPATH",
-			"value" : "D:/Visual Studio/VS.1/Common7/IDE/CommonExtensions/Microsoft/CMake/Ninja/ninja.exe"
+			"value" : "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/Ninja/ninja.exe"
 		},
 		{
 			"name" : "CMAKE_MODULE_LINKER_FLAGS",
@@ -1003,7 +1003,7 @@
 				}
 			],
 			"type" : "INTERNAL",
-			"value" : "D:/Visual Studio/VS.1/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.3"
+			"value" : "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.3"
 		},
 		{
 			"name" : "CMAKE_SHARED_LINKER_FLAGS",
