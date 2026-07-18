@@ -18,15 +18,24 @@ endif()
 # Define the fundamental RTOS shim environment
 add_library(rtos_shim
   rtos/rtos_shim.cpp
-)
+ "src/ipc/ipc.h")
 target_include_directories(rtos_shim PUBLIC include rtos)
 
 # Build the final executable with both application tasks explicitly included
 add_executable(rtos_app
-  src/main.cpp
-  src/tasks/TaskA.cpp
-  src/tasks/TaskB.cpp
-)
+   src/main.cpp
+    src/tasks/tasks.cpp
+    src/tasks/watchdog.cpp
+    src/tasks/producer.cpp
+    src/tasks/consumer.cpp
+    src/tasks/log_worker.cpp
+    src/timing/timing.cpp
+    src/shared/heartbeat.cpp
+    src/shared/safe_log.cpp
+    src/ipc/ipc.cpp    
+
+ "src/ipc/ipc.h")
+ target_include_directories(rtos_app PRIVATE src/tasks src/timing src/shared src/ipc)
 target_link_libraries(rtos_app PRIVATE rtos_shim)
 
 # Diagnostics
