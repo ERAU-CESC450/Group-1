@@ -123,6 +123,11 @@ Suggested evidence:
 - Output showing event trigger and task-side handling
 - Notes explaining ISR discipline and responsiveness impact
 
+<img width="567" height="172" alt="isr_1" src="https://github.com/user-attachments/assets/677aabb5-7145-4d62-8715-1edfe05ac735" />
+-Added ISR to flag and message high latency cases of IPC. This is important because high latency in messageing can lead to delays
+in tasking which leads to system failures. ISRs allow the system to quickly handle theses cases while keeping the system 
+on time and on target. 
+
 ---
 
 ### Module 8 – System Integration and Stabilization
