@@ -26,7 +26,7 @@
 
 
 
-//Module 6 IPC 
+//Module 7 INTERRUPT SERVICE ROUTINE
 
 #include <iostream>
 #include "rtos_api.h"

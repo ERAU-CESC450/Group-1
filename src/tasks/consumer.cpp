@@ -3,6 +3,7 @@
 #include "ipc.h"
 #include "messages.h"
 #include "safe_log.h"
+#include "../interrupts/isr.h"
 
 #include <string>
 
@@ -34,14 +35,19 @@ void LoggerConsumerTask(void* params)
 		{
 			SafeLogWrite(std::string("   [") + name + "] STOP received; processed " + std::to_string(received) + " messages, " + std::to_string(timeouts) + " receive timeouts.", 0);
 			break;
-		
+
 		}
+
 
 		++received;
 
 		const uint32_t now = xTaskGetTickCount();
 		const uint32_t latency = now - msg.tick;
 
+		if (latency > 500)
+		{
+			isr_signal(latency);
+		}
 		SafeLogWrite(
 			std::string("   [") + name +
 			"] received seq-" + std::to_string(msg.seq) +
@@ -52,3 +58,4 @@ void LoggerConsumerTask(void* params)
 		vTaskDelay(kProcessMs);
 	}
 }
+
