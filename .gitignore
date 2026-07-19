@@ -11,6 +11,9 @@ build/*
 
 #VS CMAKE files
 out/
+build/
+build-test/
+*.user
 
 # Generic build outputs
 *.o

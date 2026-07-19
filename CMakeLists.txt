@@ -23,15 +23,21 @@ target_include_directories(rtos_shim PUBLIC include rtos)
 
 # Build the final executable with both application tasks explicitly included
 add_executable(rtos_app
-   src/main.cpp
+    src/main.cpp
+
+    src/interrupts/isr.cpp
+
     src/tasks/tasks.cpp
     src/tasks/watchdog.cpp
     src/tasks/producer.cpp
     src/tasks/consumer.cpp
     src/tasks/log_worker.cpp
+
     src/timing/timing.cpp
+
     src/shared/heartbeat.cpp
     src/shared/safe_log.cpp
+
     src/ipc/ipc.cpp    
 
  "src/ipc/ipc.h")
