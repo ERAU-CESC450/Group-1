@@ -141,6 +141,9 @@ Capture evidence showing:
 Suggested evidence:
 - Logs showing behavior before and after changes
 - Notes describing what was changed and why it improved the system
+<img width="1091" height="408" alt="image" src="https://github.com/user-attachments/assets/8149dacb-9aca-4bb4-b18c-62a9d79a0182" />
+
+<img width="963" height="387" alt="image" src="https://github.com/user-attachments/assets/d7cfa107-ab83-4769-9b1a-96acd7a84313" />
 
 ---
 
