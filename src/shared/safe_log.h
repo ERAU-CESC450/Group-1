@@ -1,15 +1,31 @@
-#pragma once
+#ifndef CESC450_SAFE_LOG_H
+#define CESC450_SAFE_LOG_H
 
-#include <string>
 #include <cstdint>
+#include <string>
 
-// Initializes the logging system.
-void SafeLogInit();
+int SafeLogInit(uint32_t queueLength,
+    uint32_t writerTaskCount,
+    uint32_t sendTimeoutMs);
 
-// Cleans up the logging system.
 void SafeLogShutdown();
+void SafeLogWrite(const std::string& message, uint32_t color = 0);
+void SafeLogTaskComplete();
+void SafeLogWorkerTask(void* params);
 
-// Thread-safe console logging.
-// The color parameter is reserved for future use.
-void SafeLogWrite(const std::string& message,
-    uint32_t color = 0);
+class SafeLogTaskCompletionGuard
+{
+public:
+    SafeLogTaskCompletionGuard() = default;
+
+    ~SafeLogTaskCompletionGuard()
+    {
+        SafeLogTaskComplete();
+    }
+
+    SafeLogTaskCompletionGuard(const SafeLogTaskCompletionGuard&) = delete;
+    SafeLogTaskCompletionGuard& operator=(
+        const SafeLogTaskCompletionGuard&) = delete;
+};
+
+#endif // CESC450_SAFE_LOG_H
