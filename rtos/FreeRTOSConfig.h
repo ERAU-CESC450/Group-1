@@ -7,6 +7,7 @@
   chosen port and course guidance.
 */
 
+#pragma once
 #define configUSE_PREEMPTION                    1
 #define configUSE_TIME_SLICING                  1
 #define configTICK_RATE_HZ                      1000
@@ -15,7 +16,7 @@
 #define configTOTAL_HEAP_SIZE                   (64 * 1024)
 #define configMAX_TASK_NAME_LEN                 16
 #define configUSE_16_BIT_TICKS                  0
-
-// Optional diagnostics (safe defaults for the shim)
 #define configCHECK_FOR_STACK_OVERFLOW          0
 #define configUSE_MALLOC_FAILED_HOOK            0
+#define configUSE_MUTEXES                       1
+#define configUSE_COUNTING_SEMAPHORES           1
