@@ -141,17 +141,17 @@ Capture evidence showing:
 Suggested evidence:
 - Logs showing behavior before and after changes
 - Notes describing what was changed and why it improved the system
-- Integrated the producer, consumer, watchdog, event-handler, event generator, and log-worker tasks into one system.
-- Increased queue sizes and reduced blocking timeouts to prevent queue overflow and long task delays.
-- Added periodic timing, jitter, latency, and deadline measurements to make system performance observable.
-- Added a counting semaphore to notify the eventhandler and logworker tasks when work is available.
-- Added a mutex to protect console output and prevent messages from different tasks from overlapping.
-- Moved console logging into a separate log-worker task so time sensitive tasks perform less blocking work.
-- Reduced consumer processing time so messages are processed faster than they are produced.
-- Kept ISR style functions short by placing events in a queue and deferring processing to a task.
-- Added heartbeat and watchdog monitoring to detect stalled or unresponsive tasks.
-- Added PASS and FAIL summaries for IPC, timing, latency, watchdog, event handling, and logging.
-- These changes improved reliability by reducing dropped messages, deadline misses, queue pressure, latency, and watchdog faults.
+  - Integrated the producer, consumer, watchdog, event-handler, event generator, and log-worker tasks into one system.
+  - Increased queue sizes and reduced blocking timeouts to prevent queue overflow and long task delays.
+  - Added periodic timing, jitter, latency, and deadline measurements to make system performance observable.
+  - Added a counting semaphore to notify the eventhandler and logworker tasks when work is available.
+  - Added a mutex to protect console output and prevent messages from different tasks from overlapping.
+  - Moved console logging into a separate log-worker task so time sensitive tasks perform less blocking work.
+  - Reduced consumer processing time so messages are processed faster than they are produced.
+  - Kept ISR style functions short by placing events in a queue and deferring processing to a task.
+  - Added heartbeat and watchdog monitoring to detect stalled or unresponsive tasks.
+  - Added PASS and FAIL summaries for IPC, timing, latency, watchdog, event handling, and logging.
+  - These changes improved reliability by reducing dropped messages, deadline misses, queue pressure, latency, and watchdog faults.
   
 <img width="1091" height="408" alt="image" src="https://github.com/user-attachments/assets/8149dacb-9aca-4bb4-b18c-62a9d79a0182" />
 
