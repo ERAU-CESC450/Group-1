@@ -1,200 +1,197 @@
-/*
- * ============================================================
- * CESC 450 – Real-Time Embedded Systems Course Project
- * src/main.cpp
- *
- * PURPOSE:
- * This file serves as the central coordination point for the project.
- * It is responsible for:
- *
- *  - System initialization (host-based for this course)
- *  - RTOS startup
- *  - Creating and configuring tasks
- *
- * This file is extended incrementally across Modules 3–7.
- *
- * IMPORTANT GUIDELINES FOR STUDENTS:
- *  - Do NOT place all application logic in this file
- *  - Task implementations belong in src/tasks/
- *  - Timing logic belongs in src/timing/
- *  - IPC logic belongs in src/ipc/
- *  - Shared data and synchronization belong in src/shared/
- *
- * main.cpp should remain readable and focused on system setup.
- * ============================================================
- */
-
-
-
-//Module 7 INTERRUPT SERVICE ROUTINE
-
-/*#include <iostream>
-#include "rtos_api.h"
-#include "tasks.h"
-#include "watchdog.h"
+#include "consumer.h"
 #include "heartbeat.h"
 #include "ipc.h"
-#include "safe_log.h"
-#include "log_worker.h"
-#include "producer.h"
-#include "consumer.h"
-
-
-
-int main()
-{
-    std::cout << "=====================================================\n";
-    std::cout << "CESC 450 Module 6 Messages & IPC\n";
-    std::cout << "=====================================================\n\n";
-
-    SafeLogInit();
-    IpcInit(3);
-
-    static const char* kProducer = "Producer";
-    static const char* kConsumer = "Consumer";
-
-    TaskHandle_t p = nullptr;
-	TaskHandle_t c = nullptr;
-
-    if (!xTaskCreate(SensorProducerTask, "Producer,", 256, (void*)kProducer, 2, &p) ||
-        !xTaskCreate(LoggerConsumerTask, "Consumer", 256, (void*)kConsumer, 1, &c))
-    {
-        std::cerr << "Failed to create IPC tasks\n";
-        IpcShutdown();
-        SafeLogShutdown();
-        return 1;
-    }
-    
-    std::cout << "Starting scheduler...\n";
-    vTaskStartScheduler();
-
-    std::cout << "\nScheduler exited (all tasks completed). Baseline OK.\n";
-
-    return 0;
-}*/
-
-//Module 7 Tyler Update 
-/*
- * ============================================================
- * CESC 450 – Real-Time Embedded Systems Course Project
- * src/main.cpp
- *
- * PURPOSE:
- * This file serves as the central coordination point for the project.
- * It is responsible for:
- *
- *  - System initialization (host-based for this course)
- *  - RTOS startup
- *  - Creating and configuring tasks
- *
- * This file is extended incrementally across Modules 3–7.
- *
- * IMPORTANT GUIDELINES FOR STUDENTS:
- *  - Do NOT place all application logic in this file
- *  - Task implementations belong in src/tasks/
- *  - Timing logic belongs in src/timing/
- *  - IPC logic belongs in src/ipc/
- *  - Shared data and synchronization belong in src/shared/
- *
- * main.cpp should remain readable and focused on system setup.
- * ============================================================
- */
-
-// Module 7 INTERRUPT SERVICE ROUTINE
-
-#include <iostream>
-
-#include "rtos_api.h"
-
-#include "ipc.h"
-#include "safe_log.h"
-
-#include "producer.h"
-#include "consumer.h"
 #include "isr.h"
+#include "producer.h"
+#include "rtos_api.h"
+#include "safe_log.h"
+#include "system_config.h"
+#include "system_stats.h"
+#include "watchdog.h"
 
-int main()
+#include <iomanip>
+#include <iostream>
+#include <string>
+
+namespace
 {
-
-    SafeLogInit();
-    IpcInit(3);
-
-    if (!InterruptSystemInit())
+    const char* Result(bool passed)
     {
-        std::cerr
-            << "Failed to initialize interrupt system.\n";
-
-        IpcShutdown();
-        SafeLogShutdown();
-
-        return 1;
+        return passed ? "PASS" : "FAIL";
     }
 
-    static const char *kProducerName = "Producer";
-    static const char *kConsumerName = "Consumer";
-
-    TaskHandle_t producerHandle = nullptr;
-    TaskHandle_t consumerHandle = nullptr;
-    TaskHandle_t eventSourceHandle = nullptr;
-    TaskHandle_t eventHandlerHandle = nullptr;
-
-    const int tasksCreated =
-        xTaskCreate(
-            InterruptEventHandlerTask,
-            "EventHandler",
-            256,
-            nullptr,
-            3,
-            &eventHandlerHandle) &&
-
-        xTaskCreate(
-            SensorProducerTask,
-            "Producer",
-            256,
-            (void *)kProducerName,
-            2,
-            &producerHandle) &&
-
-        xTaskCreate(
-            LoggerConsumerTask,
-            "Consumer",
-            256,
-            (void *)kConsumerName,
-            1,
-            &consumerHandle) &&
-
-        xTaskCreate(
-            SimulatedEventSourceTask,
-            "EventSource",
-            256,
-            nullptr,
-            2,
-            &eventSourceHandle);
-
-    if (!tasksCreated)
+    bool CreateTask(void (*entry)(void*),
+        const char* taskName,
+        uint32_t priority)
     {
-        std::cerr
-            << "Failed to create Module 7 tasks.\n";
-
-        InterruptSystemShutdown();
-        IpcShutdown();
-        SafeLogShutdown();
-
-        return 1;
+        TaskHandle_t handle = nullptr;
+        return xTaskCreate(entry,
+            taskName,
+            256,
+            nullptr,
+            priority,
+            &handle) != 0;
     }
 
-    std::cout << "Starting scheduler...\n";
+    void PrintConfiguration(const SystemConfig& config)
+    {
+        std::cout << "Run configuration: " << config.modeName << '\n'
+            << "IPC queue length: " << config.queueLength << '\n'
+            << "Event queue length: " << config.eventQueueLength << '\n'
+            << "Log queue length: " << config.logQueueLength << '\n'
+            << "Log send timeout: " << config.logSendTimeoutMs << "ms\n"
+            << "Producer period: " << config.producerPeriodMs << "ms\n"
+            << "Consumer processing: " << config.consumerProcessMs << "ms\n"
+            << "Send timeout: " << config.sendTimeoutMs << "ms\n"
+            << "Receive timeout: " << config.receiveTimeoutMs << "ms\n"
+            << "High-latency threshold: "
+            << config.highLatencyThresholdMs << "ms\n\n";
+    }
 
-    vTaskStartScheduler();
+    void PrintSummary(const SystemConfig& config)
+    {
+        const auto stats = StatsSnapshot();
+        const double averageLatency = stats.messagesReceived == 0
+            ? 0.0
+            : static_cast<double>(stats.totalLatencyMs) /
+            static_cast<double>(stats.messagesReceived);
 
-    InterruptSystemShutdown();
-    IpcShutdown();
-    SafeLogShutdown();
+        const bool ipcPassed =
+            stats.messagesSent == static_cast<uint32_t>(config.messageCount) &&
+            stats.messagesReceived == stats.messagesSent &&
+            stats.sendDrops == 0 &&
+            stats.receiveTimeouts == 0;
 
-    std::cout
-        << "\nScheduler exited. "
-        << "Module 7 event handling completed.\n";
+        const bool timingPassed =
+            stats.producerDeadlineMisses == 0;
 
-    return 0;
+        const bool latencyPassed =
+            stats.maxLatencyMs <= config.highLatencyThresholdMs;
+
+        const bool watchdogPassed =
+            stats.watchdogFaults == 0;
+
+        const bool eventPassed =
+            stats.eventDrops == 0 &&
+            stats.eventsSignaled == stats.eventsHandled;
+
+        const bool loggingPassed =
+            stats.logDrops == 0 &&
+            stats.logSyncErrors == 0 &&
+            stats.logsQueued == stats.logsWritten;
+
+        const bool overallPassed =
+            ipcPassed &&
+            timingPassed &&
+            latencyPassed &&
+            watchdogPassed &&
+            eventPassed &&
+            loggingPassed;
+
+        std::cout << "\n================ MODULE 8 SUMMARY ================\n"
+            << "run_configuration=" << config.modeName << '\n'
+            << "overall_result=" << Result(overallPassed) << '\n'
+            << "ipc_result=" << Result(ipcPassed)
+            << " sent=" << stats.messagesSent
+            << " received=" << stats.messagesReceived
+            << " drops=" << stats.sendDrops
+            << " receive_timeouts=" << stats.receiveTimeouts << '\n'
+            << "timing_result=" << Result(timingPassed)
+            << " producer_deadline_misses="
+            << stats.producerDeadlineMisses
+            << " max_lateness_ms=" << stats.maxProducerLatenessMs
+            << " max_send_wait_ms=" << stats.maxSendWaitMs << '\n'
+            << std::fixed << std::setprecision(1)
+            << "latency_result=" << Result(latencyPassed)
+            << " average_latency_ms=" << averageLatency
+            << " max_latency_ms=" << stats.maxLatencyMs << '\n'
+            << "watchdog_result=" << Result(watchdogPassed)
+            << " watchdog_faults=" << stats.watchdogFaults << '\n'
+            << "event_result=" << Result(eventPassed)
+            << " events_signaled=" << stats.eventsSignaled
+            << " events_handled=" << stats.eventsHandled
+            << " event_drops=" << stats.eventDrops << '\n'
+            << "logging_result=" << Result(loggingPassed)
+            << " logs_queued=" << stats.logsQueued
+            << " logs_written=" << stats.logsWritten
+            << " log_drops=" << stats.logDrops
+            << " log_sync_errors=" << stats.logSyncErrors
+            << " max_log_queue_wait_ms="
+            << stats.maxLogQueueWaitMs << '\n'
+            << "==================================================\n";
+    }
 }
 
+int main(int argc, char* argv[])
+{
+    const bool baseline =
+        argc > 1 && std::string(argv[1]) == "--baseline";
+
+    const SystemConfig& config =
+        baseline ? BaselineConfig() : StabilizedConfig();
+
+    SetSystemConfig(&config);
+
+    std::cout << "=====================================================\n"
+        << "CESC 450 Module 8 Integration and Stabilization\n"
+        << "=====================================================\n";
+
+    PrintConfiguration(config);
+
+    StatsReset();
+
+    constexpr uint32_t kLoggingWriterTasks = 5;
+
+    if (!SafeLogInit(config.logQueueLength,
+        kLoggingWriterTasks,
+        config.logSendTimeoutMs))
+    {
+        std::cerr << "[FAIL] Asynchronous logging initialization failed.\n";
+        return 1;
+    }
+    HeartbeatInit(xTaskGetTickCount());
+
+    if (!IpcInit(config.queueLength) ||
+        !IsrInit(config.eventQueueLength))
+    {
+        std::cerr
+            << "[FAIL] IPC, semaphore, or event queue initialization failed.\n";
+
+        IpcShutdown();
+        IsrShutdown();
+        SafeLogShutdown();
+        return 1;
+    }
+
+    const bool created =
+        CreateTask(SafeLogWorkerTask, "LogWorker", 1) &&
+        CreateTask(EventHandlerTask, "EventHandler", 4) &&
+        CreateTask(WatchdogTask, "Watchdog", 4) &&
+        CreateTask(SensorProducerTask, "Producer", 3) &&
+        CreateTask(EventGeneratorTask, "EventSource", 3) &&
+        CreateTask(LoggerConsumerTask, "Consumer", 2);
+
+    if (!created)
+    {
+        std::cerr << "[FAIL] One or more tasks could not be created.\n";
+
+        IpcShutdown();
+        IsrShutdown();
+        SafeLogShutdown();
+        return 1;
+    }
+
+    SafeLogWrite(
+        "[PASS] Scheduler started with tasks, timing, IPC, asynchronous logging, "
+        "mutex protection, counting-semaphore signaling, watchdog monitoring, "
+        "and deferred events.");
+
+    vTaskStartScheduler();
+
+    PrintSummary(config);
+
+    IpcShutdown();
+    IsrShutdown();
+    SafeLogShutdown();
+    return 0;
+}
