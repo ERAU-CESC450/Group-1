@@ -1,18 +1,19 @@
-/*#include "rtos_api.h"
+#include "rtos_api.h"
 #include "FreeRTOSConfig.h"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
 #include <cstring>
 #include <deque>
+#include <functional>
 #include <iostream>
 #include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
-#include <functional>
 
 // -----------------------------------------------------------------------------
 // Task shim
@@ -25,10 +26,12 @@ struct TaskHandle
     std::thread th;
 };
 
-static std::mutex g_mutex;
+static std::mutex g_taskListMutex;
 static std::vector<TaskHandle*> g_tasks;
 static std::atomic<uint32_t> g_ticks{ 0 };
 static std::atomic<bool> g_schedulerStarted{ false };
+static std::mutex g_startMutex;
+static std::condition_variable g_startCv;
 
 static void tickThreadFn()
 {
@@ -37,14 +40,15 @@ static void tickThreadFn()
     auto last = steady_clock::now();
     while (g_schedulerStarted.load(std::memory_order_relaxed))
     {
-        std::this_thread::sleep_for(milliseconds(1)); // scheduler-friendly pacing
+        std::this_thread::sleep_for(milliseconds(1));
 
-        auto now = steady_clock::now();
-        auto elapsedMs = duration_cast<milliseconds>(now - last).count();
+        const auto now = steady_clock::now();
+        const auto elapsedMs = duration_cast<milliseconds>(now - last).count();
 
         if (elapsedMs > 0)
         {
-            g_ticks.fetch_add(static_cast<uint32_t>(elapsedMs),
+            g_ticks.fetch_add(
+                static_cast<uint32_t>(elapsedMs),
                 std::memory_order_relaxed);
             last = now;
         }
@@ -53,7 +57,7 @@ static void tickThreadFn()
 
 int xTaskCreate(TaskFunction_t taskCode,
     const char* name,
-    uint32_t stackWords,// comment here stackWords,
+    uint32_t /*stackWords*/,
     void* params,
     uint32_t priority,
     TaskHandle_t* outHandle)
@@ -61,61 +65,74 @@ int xTaskCreate(TaskFunction_t taskCode,
     if (!taskCode || !name)
         return 0;
 
-    auto* h = new TaskHandle();
-    h->name = name;
-    h->priority = priority;
+    auto* handle = new TaskHandle();
+    handle->name = name;
+    handle->priority = priority;
 
-    // NOTE: This shim does not implement priority scheduling.
-    // It creates native threads; priority is recorded for later modules.
-    h->th = std::thread([taskCode, params, nm = h->name]()
+    // The desktop shim uses native threads. Tasks are held at a start barrier
+    // until vTaskStartScheduler() is called. Priority is recorded to preserve
+    // the intended RTOS design, but native priority scheduling is not emulated.
+    handle->th = std::thread([taskCode, params, taskName = handle->name]()
         {
-            try {
+            {
+                std::unique_lock<std::mutex> lock(g_startMutex);
+                g_startCv.wait(lock, []
+                    {
+                        return g_schedulerStarted.load(std::memory_order_relaxed);
+                    });
+            }
+
+            try
+            {
                 taskCode(params);
             }
-            catch (...) {
-                std::cerr << "[RTOS] Task '" << nm << "' terminated with an exception.\n";
-            } });
+            catch (...)
+            {
+                (void)taskName;
+                std::cerr << "[FAIL] A task terminated with an exception.\n";
+            }
+        });
 
     {
-        std::lock_guard<std::mutex> lock(g_mutex);
-        g_tasks.push_back(h);
+        std::lock_guard<std::mutex> lock(g_taskListMutex);
+        g_tasks.push_back(handle);
     }
 
     if (outHandle)
-        *outHandle = h;
+        *outHandle = handle;
+
     return 1;
 }
 
 void vTaskStartScheduler(void)
 {
-    // In a real RTOS, tasks would begin only after the scheduler starts.
-    // Here, threads begin immediately on xTaskCreate. Scheduler manages tick + join.
     g_schedulerStarted.store(true, std::memory_order_relaxed);
 
     std::thread tickThread(tickThreadFn);
+    g_startCv.notify_all();
 
-    // Wait for all tasks to finish
     std::vector<TaskHandle*> tasksCopy;
     {
-        std::lock_guard<std::mutex> lock(g_mutex);
+        std::lock_guard<std::mutex> lock(g_taskListMutex);
         tasksCopy = g_tasks;
     }
 
-    for (auto* t : tasksCopy)
+    for (auto* task : tasksCopy)
     {
-        if (t && t->th.joinable())
-            t->th.join();
+        if (task && task->th.joinable())
+            task->th.join();
     }
 
     g_schedulerStarted.store(false, std::memory_order_relaxed);
+
     if (tickThread.joinable())
         tickThread.join();
 
-    // cleanup
-    for (auto* t : tasksCopy)
-        delete t;
+    for (auto* task : tasksCopy)
+        delete task;
+
     {
-        std::lock_guard<std::mutex> lock(g_mutex);
+        std::lock_guard<std::mutex> lock(g_taskListMutex);
         g_tasks.clear();
     }
 }
@@ -136,7 +153,7 @@ uint32_t xTaskGetTickCount(void)
 }
 
 // -----------------------------------------------------------------------------
-// Queue shim (Module 6 IPC)
+// Queue shim (IPC)
 // -----------------------------------------------------------------------------
 
 struct QueueHandle
@@ -147,25 +164,27 @@ struct QueueHandle
     std::mutex mtx;
     std::condition_variable cvNotEmpty;
     std::condition_variable cvNotFull;
-
     std::deque<std::vector<uint8_t>> q;
 };
 
-static bool wait_until(std::condition_variable& cv,
+static bool waitUntil(std::condition_variable& cv,
     std::unique_lock<std::mutex>& lock,
     uint32_t timeoutMs,
-    const std::function<bool()>& pred)
+    const std::function<bool()>& predicate)
 {
     if (timeoutMs == 0)
-        return pred();
+        return predicate();
 
-    auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeoutMs);
-    while (!pred())
+    const auto deadline = std::chrono::steady_clock::now() +
+        std::chrono::milliseconds(timeoutMs);
+
+    while (!predicate())
     {
         if (cv.wait_until(lock, deadline) == std::cv_status::timeout)
             break;
     }
-    return pred();
+
+    return predicate();
 }
 
 QueueHandle_t xQueueCreate(uint32_t length, uint32_t itemSize)
@@ -173,344 +192,132 @@ QueueHandle_t xQueueCreate(uint32_t length, uint32_t itemSize)
     if (length == 0 || itemSize == 0)
         return nullptr;
 
-    auto* h = new QueueHandle();
-    h->capacity = length;
-    h->itemSize = itemSize;
-    return h;
+    auto* queue = new QueueHandle();
+    queue->capacity = length;
+    queue->itemSize = itemSize;
+    return queue;
 }
 
-int xQueueSend(QueueHandle_t q, const void* item, uint32_t timeoutMs)
+int xQueueSend(QueueHandle_t queue, const void* item, uint32_t timeoutMs)
 {
-    if (!q || !item)
+    if (!queue || !item)
         return 0;
 
-    std::unique_lock<std::mutex> lock(q->mtx);
+    std::unique_lock<std::mutex> lock(queue->mtx);
 
-    auto canPush = [&]()
-        { return q->q.size() < q->capacity; };
-
-    if (!wait_until(q->cvNotFull, lock, timeoutMs, canPush))
-        return 0;
-
-    std::vector<uint8_t> buf(q->itemSize);
-    std::memcpy(buf.data(), item, q->itemSize);
-    q->q.push_back(std::move(buf));
-
-    lock.unlock();
-    q->cvNotEmpty.notify_one();
-    return 1;
-}
-
-int xQueueReceive(QueueHandle_t q, void* outItem, uint32_t timeoutMs)
-{
-    if (!q || !outItem)
-        return 0;
-
-    std::unique_lock<std::mutex> lock(q->mtx);
-
-    auto canPop = [&]()
-        { return !q->q.empty(); };
-
-    if (!wait_until(q->cvNotEmpty, lock, timeoutMs, canPop))
-        return 0;
-
-    auto buf = std::move(q->q.front());
-    q->q.pop_front();
-
-    std::memcpy(outItem, buf.data(), q->itemSize);
-
-    lock.unlock();
-    q->cvNotFull.notify_one();
-    return 1;
-}
-
-void vQueueDelete(QueueHandle_t q)
-{
-    if (!q)
-        return;
-    delete q;
-}*/
-#include "rtos_api.h"
-#include "FreeRTOSConfig.h"
-
-#include <atomic>
-#include <chrono>
-#include <condition_variable>
-#include <cstdint>
-#include <cstring>
-#include <deque>
-#include <iostream>
-#include <mutex>
-#include <string>
-#include <thread>
-#include <vector>
-#include <functional>
-
-// -----------------------------------------------------------------------------
-// Task shim
-// -----------------------------------------------------------------------------
-
-struct TaskHandle
-{
-    std::string name;
-    uint32_t priority;
-    std::thread th;
-};
-
-static std::mutex g_mutex;
-static std::vector<TaskHandle *> g_tasks;
-static std::atomic<uint32_t> g_ticks{0};
-static std::atomic<bool> g_schedulerStarted{false};
-
-static void tickThreadFn()
-{
-    using namespace std::chrono;
-
-    auto last = steady_clock::now();
-    while (g_schedulerStarted.load(std::memory_order_relaxed))
-    {
-        std::this_thread::sleep_for(milliseconds(1)); // scheduler-friendly pacing
-
-        auto now = steady_clock::now();
-        auto elapsedMs = duration_cast<milliseconds>(now - last).count();
-
-        if (elapsedMs > 0)
+    const auto canPush = [&]()
         {
-            g_ticks.fetch_add(static_cast<uint32_t>(elapsedMs),
-                              std::memory_order_relaxed);
-            last = now;
-        }
-    }
-}
+            return queue->q.size() < queue->capacity;
+        };
 
-int xTaskCreate(TaskFunction_t taskCode,
-                const char *name,
-                uint32_t /*stackWords*/,
-                void *params,
-                uint32_t priority,
-                TaskHandle_t *outHandle)
-{
-    if (!taskCode || !name)
+    if (!waitUntil(queue->cvNotFull, lock, timeoutMs, canPush))
         return 0;
 
-    auto *h = new TaskHandle();
-    h->name = name;
-    h->priority = priority;
-
-    // NOTE: This shim does not implement priority scheduling.
-    // It creates native threads; priority is recorded for later modules.
-    h->th = std::thread([taskCode, params, nm = h->name]()
-                        {
-            try {
-                taskCode(params);
-            }
-            catch (...) {
-                std::cerr << "[RTOS] Task '" << nm << "' terminated with an exception.\n";
-            } });
-
-    {
-        std::lock_guard<std::mutex> lock(g_mutex);
-        g_tasks.push_back(h);
-    }
-
-    if (outHandle)
-        *outHandle = h;
-    return 1;
-}
-
-void vTaskStartScheduler(void)
-{
-    // In a real RTOS, tasks would begin only after the scheduler starts.
-    // Here, threads begin immediately on xTaskCreate. Scheduler manages tick + join.
-    g_schedulerStarted.store(true, std::memory_order_relaxed);
-
-    std::thread tickThread(tickThreadFn);
-
-    // Wait for all tasks to finish
-    std::vector<TaskHandle *> tasksCopy;
-    {
-        std::lock_guard<std::mutex> lock(g_mutex);
-        tasksCopy = g_tasks;
-    }
-
-    for (auto *t : tasksCopy)
-    {
-        if (t && t->th.joinable())
-            t->th.join();
-    }
-
-    g_schedulerStarted.store(false, std::memory_order_relaxed);
-    if (tickThread.joinable())
-        tickThread.join();
-
-    // cleanup
-    for (auto *t : tasksCopy)
-        delete t;
-    {
-        std::lock_guard<std::mutex> lock(g_mutex);
-        g_tasks.clear();
-    }
-}
-
-void vTaskDelay(uint32_t delayMs)
-{
-    std::this_thread::sleep_for(std::chrono::milliseconds(delayMs));
-}
-
-void taskYIELD(void)
-{
-    std::this_thread::yield();
-}
-
-uint32_t xTaskGetTickCount(void)
-{
-    return g_ticks.load(std::memory_order_relaxed);
-}
-
-// -----------------------------------------------------------------------------
-// Queue shim (Module 6 IPC)
-// -----------------------------------------------------------------------------
-
-struct QueueHandle
-{
-    uint32_t capacity = 0;
-    uint32_t itemSize = 0;
-
-    std::mutex mtx;
-    std::condition_variable cvNotEmpty;
-    std::condition_variable cvNotFull;
-
-    std::deque<std::vector<uint8_t>> q;
-};
-
-static bool wait_until(std::condition_variable &cv,
-                       std::unique_lock<std::mutex> &lock,
-                       uint32_t timeoutMs,
-                       const std::function<bool()> &pred)
-{
-    if (timeoutMs == 0)
-        return pred();
-
-    auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeoutMs);
-    while (!pred())
-    {
-        if (cv.wait_until(lock, deadline) == std::cv_status::timeout)
-            break;
-    }
-    return pred();
-}
-
-QueueHandle_t xQueueCreate(uint32_t length, uint32_t itemSize)
-{
-    if (length == 0 || itemSize == 0)
-        return nullptr;
-
-    auto *h = new QueueHandle();
-    h->capacity = length;
-    h->itemSize = itemSize;
-    return h;
-}
-
-int xQueueSend(QueueHandle_t q, const void *item, uint32_t timeoutMs)
-{
-    if (!q || !item)
-        return 0;
-
-    std::unique_lock<std::mutex> lock(q->mtx);
-
-    auto canPush = [&]()
-    { return q->q.size() < q->capacity; };
-
-    if (!wait_until(q->cvNotFull, lock, timeoutMs, canPush))
-        return 0;
-
-    std::vector<uint8_t> buf(q->itemSize);
-    std::memcpy(buf.data(), item, q->itemSize);
-    q->q.push_back(std::move(buf));
+    std::vector<uint8_t> buffer(queue->itemSize);
+    std::memcpy(buffer.data(), item, queue->itemSize);
+    queue->q.push_back(std::move(buffer));
 
     lock.unlock();
-    q->cvNotEmpty.notify_one();
+    queue->cvNotEmpty.notify_one();
     return 1;
 }
 
-int xQueueReceive(QueueHandle_t q, void *outItem, uint32_t timeoutMs)
+int xQueueReceive(QueueHandle_t queue, void* outItem, uint32_t timeoutMs)
 {
-    if (!q || !outItem)
+    if (!queue || !outItem)
         return 0;
 
-    std::unique_lock<std::mutex> lock(q->mtx);
+    std::unique_lock<std::mutex> lock(queue->mtx);
 
-    auto canPop = [&]()
-    { return !q->q.empty(); };
+    const auto canPop = [&]()
+        {
+            return !queue->q.empty();
+        };
 
-    if (!wait_until(q->cvNotEmpty, lock, timeoutMs, canPop))
+    if (!waitUntil(queue->cvNotEmpty, lock, timeoutMs, canPop))
         return 0;
 
-    auto buf = std::move(q->q.front());
-    q->q.pop_front();
-
-    std::memcpy(outItem, buf.data(), q->itemSize);
+    auto buffer = std::move(queue->q.front());
+    queue->q.pop_front();
+    std::memcpy(outItem, buffer.data(), queue->itemSize);
 
     lock.unlock();
-    q->cvNotFull.notify_one();
+    queue->cvNotFull.notify_one();
     return 1;
 }
 
-void vQueueDelete(QueueHandle_t q)
+void vQueueDelete(QueueHandle_t queue)
 {
-    if (!q)
-        return;
-    delete q;
+    delete queue;
 }
+
 // -----------------------------------------------------------------------------
-// Counting semaphore shim
+// Counting semaphore and mutex shim
 // -----------------------------------------------------------------------------
 
 struct SemaphoreHandle
 {
     uint32_t maxCount = 0;
-    std::atomic<uint32_t> count{0};
+    std::atomic<uint32_t> count{ 0 };
+    bool isMutex = false;
 
-    // These objects are used only when a task waits.
-    // The ISR-safe give operation does not lock this mutex.
+    // Tasks wait on this condition variable. The ISR-style give operation does
+    // not acquire waitMutex, which keeps the signal path short and non-blocking.
     std::mutex waitMutex;
     std::condition_variable cv;
+
+    // Mutex ownership is tracked for task-context mutexes. This shim does not
+    // implement priority inheritance because it does not emulate RTOS priorities.
+    std::mutex ownerMutex;
+    std::thread::id owner;
 };
+
+static SemaphoreHandle_t createSemaphore(
+    uint32_t maxCount,
+    uint32_t initialCount,
+    bool isMutex)
+{
+    if (maxCount == 0 || initialCount > maxCount)
+        return nullptr;
+
+    auto* semaphore = new SemaphoreHandle();
+    semaphore->maxCount = maxCount;
+    semaphore->count.store(initialCount, std::memory_order_relaxed);
+    semaphore->isMutex = isMutex;
+    return semaphore;
+}
 
 SemaphoreHandle_t xSemaphoreCreateCounting(
     uint32_t maxCount,
     uint32_t initialCount)
 {
-    if (maxCount == 0 || initialCount > maxCount)
-    {
-        return nullptr;
-    }
-
-    auto *semaphore = new SemaphoreHandle();
-
-    semaphore->maxCount = maxCount;
-    semaphore->count.store(
-        initialCount,
-        std::memory_order_relaxed);
-
-    return semaphore;
+    return createSemaphore(maxCount, initialCount, false);
 }
 
-static bool tryTakeSemaphore(
-    SemaphoreHandle_t semaphore)
+SemaphoreHandle_t xSemaphoreCreateMutex(void)
 {
-    uint32_t current =
-        semaphore->count.load(
-            std::memory_order_acquire);
+    // A mutex is represented as a binary semaphore that begins available.
+    return createSemaphore(1, 1, true);
+}
+
+static bool tryTakeSemaphore(SemaphoreHandle_t semaphore)
+{
+    uint32_t current = semaphore->count.load(std::memory_order_acquire);
 
     while (current > 0)
     {
         if (semaphore->count.compare_exchange_weak(
-                current,
-                current - 1,
-                std::memory_order_acq_rel,
-                std::memory_order_acquire))
+            current,
+            current - 1,
+            std::memory_order_acq_rel,
+            std::memory_order_acquire))
         {
+            if (semaphore->isMutex)
+            {
+                std::lock_guard<std::mutex> ownerLock(semaphore->ownerMutex);
+                semaphore->owner = std::this_thread::get_id();
+            }
+
             return true;
         }
     }
@@ -518,82 +325,108 @@ static bool tryTakeSemaphore(
     return false;
 }
 
-int xSemaphoreGiveFromISR(
-    SemaphoreHandle_t semaphore)
+int xSemaphoreTake(SemaphoreHandle_t semaphore, uint32_t timeoutMs)
 {
     if (!semaphore)
-    {
         return 0;
-    }
 
-    uint32_t current =
-        semaphore->count.load(
-            std::memory_order_relaxed);
+    if (tryTakeSemaphore(semaphore))
+        return 1;
+
+    if (timeoutMs == 0)
+        return 0;
+
+    const auto deadline = std::chrono::steady_clock::now() +
+        std::chrono::milliseconds(timeoutMs);
+
+    std::unique_lock<std::mutex> lock(semaphore->waitMutex);
+
+    for (;;)
+    {
+        if (tryTakeSemaphore(semaphore))
+            return 1;
+
+        const auto now = std::chrono::steady_clock::now();
+        if (now >= deadline)
+            return 0;
+
+        // A short bounded wake interval also protects the host simulation from
+        // a missed notification when xSemaphoreGiveFromISR() deliberately avoids
+        // taking waitMutex.
+        const auto pollDeadline = std::min(
+            deadline,
+            now + std::chrono::milliseconds(5));
+
+        semaphore->cv.wait_until(lock, pollDeadline);
+    }
+}
+
+static int giveCountingSemaphore(SemaphoreHandle_t semaphore)
+{
+    uint32_t current = semaphore->count.load(std::memory_order_relaxed);
 
     while (current < semaphore->maxCount)
     {
         if (semaphore->count.compare_exchange_weak(
-                current,
-                current + 1,
-                std::memory_order_release,
-                std::memory_order_relaxed))
+            current,
+            current + 1,
+            std::memory_order_release,
+            std::memory_order_relaxed))
         {
-            // Wake the task waiting for the event.
-            // This operation does not wait for a mutex.
             semaphore->cv.notify_one();
-
             return 1;
         }
     }
 
-    // The semaphore already contains the maximum
-    // number of pending events.
     return 0;
 }
 
-int xSemaphoreTake(
-    SemaphoreHandle_t semaphore,
-    uint32_t timeoutMs)
+int xSemaphoreGive(SemaphoreHandle_t semaphore)
 {
     if (!semaphore)
-    {
         return 0;
-    }
 
-    // First attempt without blocking.
-    if (tryTakeSemaphore(semaphore))
+    if (semaphore->isMutex)
     {
+        {
+            std::lock_guard<std::mutex> ownerLock(semaphore->ownerMutex);
+
+            if (semaphore->owner != std::this_thread::get_id())
+                return 0;
+
+            semaphore->owner = std::thread::id{};
+        }
+
+        uint32_t expected = 0;
+        if (!semaphore->count.compare_exchange_strong(
+            expected,
+            1,
+            std::memory_order_release,
+            std::memory_order_relaxed))
+        {
+            return 0;
+        }
+
+        semaphore->cv.notify_one();
         return 1;
     }
 
-    if (timeoutMs == 0)
-    {
-        return 0;
-    }
-
-    std::unique_lock<std::mutex> lock(
-        semaphore->waitMutex);
-
-    const bool eventAvailable =
-        semaphore->cv.wait_for(
-            lock,
-            std::chrono::milliseconds(timeoutMs),
-            [semaphore]()
-            {
-                return semaphore->count.load(
-                           std::memory_order_acquire) > 0;
-            });
-
-    if (!eventAvailable)
-    {
-        return 0;
-    }
-
-    return tryTakeSemaphore(semaphore) ? 1 : 0;
+    // Normal task-context give. The atomic count keeps the critical section
+    // short, and the condition variable wakes one blocked task.
+    return giveCountingSemaphore(semaphore);
 }
 
-void vSemaphoreDelete(
-    SemaphoreHandle_t semaphore)
+int xSemaphoreGiveFromISR(SemaphoreHandle_t semaphore)
+{
+    if (!semaphore || semaphore->isMutex)
+        return 0;
+
+    // ISR-style signaling is restricted to counting semaphores. It performs a
+    // bounded atomic increment and notification, with no logging or delay.
+    return giveCountingSemaphore(semaphore);
+}
+
+void vSemaphoreDelete(SemaphoreHandle_t semaphore)
 {
     delete semaphore;
 }
