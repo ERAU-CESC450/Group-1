@@ -1,26 +1,32 @@
 #include "safe_log.h"
+#include "log_worker.h"
 
-#include <iostream>
-#include <mutex>
-
-namespace
+int SafeLogInit(uint32_t queueLength,
+    uint32_t writerTaskCount,
+    uint32_t sendTimeoutMs)
 {
-    std::mutex gLogMutex;
-}
-
-void SafeLogInit()
-{
-    // Nothing to initialize yet.
+    return LogWorkerInit(queueLength,
+        writerTaskCount,
+        sendTimeoutMs);
 }
 
 void SafeLogShutdown()
 {
-    // Nothing to clean up yet.
+    LogWorkerShutdown();
 }
 
-void SafeLogWrite(const std::string& message, uint32_t)
+void SafeLogWrite(const std::string& message,
+    uint32_t)
 {
-    std::lock_guard<std::mutex> lock(gLogMutex);
+    LogWorkerSubmit(message);
+}
 
-    std::cout << message << std::endl;
+void SafeLogTaskComplete()
+{
+    LogWorkerNotifyTaskComplete();
+}
+
+void SafeLogWorkerTask(void* params)
+{
+    LogWorkerTask(params);
 }
