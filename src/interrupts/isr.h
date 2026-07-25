@@ -1,18 +1,13 @@
-//#pragma once
+#pragma once
 
-//void isr_signal(int latency);
+#include <cstdint>
 
-#pragma once  
-//Tyler M7 Change
+int IsrInit(uint32_t eventQueueLength);
+void IsrShutdown();
 
-// Creates the ISR-to-task semaphore.
-bool InterruptSystemInit();
+bool IsrSignalHighLatencyFromIsr(uint32_t latencyMs);
+bool IsrSignalExternalPulseFromIsr(uint32_t pulseNumber);
+void IsrRequestHandlerStop();
 
-// Deletes the ISR-to-task semaphore.
-void InterruptSystemShutdown();
-
-// Independent simulated asynchronous event source.
-void SimulatedEventSourceTask(void *params);
-
-// Task that performs meaningful event processing.
-void InterruptEventHandlerTask(void *params);
+void EventHandlerTask(void* params);
+void EventGeneratorTask(void* params);
