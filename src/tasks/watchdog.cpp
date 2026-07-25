@@ -1,61 +1,53 @@
 #include "watchdog.h"
-
-#include "rtos_api.h"
 #include "heartbeat.h"
+#include "rtos_api.h"
+#include "safe_log.h"
+#include "system_config.h"
+#include "system_stats.h"
 #include "timing.h"
 
-#include <cstdint>
-#include <iostream>
+#include <string>
 
-namespace
+void WatchdogTask(void*)
 {
-    constexpr uint32_t kWatchPeriodMs = 200;
-    constexpr uint32_t kDeadlineMs = 700; // > period + normal jitter
-}
-
-void WatchdogTask(void* params)
-{
-    const char* name = params ? static_cast<const char*>(params) : "Watchdog";
-    bool faulted = false; // report transitions, not every poll
+    SafeLogTaskCompletionGuard logCompletion;
+    const auto& config = GetSystemConfig();
+    bool faulted = false;
 
     while (HeartbeatActive())
     {
         const uint32_t now = xTaskGetTickCount();
-        const uint32_t age = TimingElapsed(HeartbeatLastSeenTick(), now);
-        const uint32_t beats = HeartbeatCount();
+        const uint32_t age =
+            TimingElapsed(HeartbeatLastSeenTick(), now);
 
-        if (age > kDeadlineMs)
+        if (age > config.watchdogDeadlineMs)
         {
             if (!faulted)
             {
-                std::cout << "  >> [" << name << "] FAULT: heartbeat LATE/STALLED - age="
-                    << age << "ms > deadline=" << kDeadlineMs
-                    << "ms (beats=" << beats << ")\n";
                 faulted = true;
-            }
-            else
-            {
-                std::cout << "  >> [" << name << "] still waiting - age=" << age
-                    << "ms (beats=" << beats << ")\n";
+                StatsRecordWatchdogFault();
+
+                SafeLogWrite(
+                    std::string("[FAIL] Watchdog heartbeat deadline exceeded: age=") +
+                    std::to_string(age) +
+                    "ms deadline=" +
+                    std::to_string(config.watchdogDeadlineMs) + "ms");
             }
         }
-        else
+        else if (faulted)
         {
-            if (faulted)
-            {
-                std::cout << "  >> [" << name << "] RECOVERED: heartbeat resumed - age="
-                    << age << "ms (beats=" << beats << ")\n";
-                faulted = false;
-            }
-            else
-            {
-                std::cout << "  -- [" << name << "] OK: age=" << age
-                    << "ms (beats=" << beats << ")\n";
-            }
+            faulted = false;
+
+            SafeLogWrite(
+                std::string("[PASS] Watchdog heartbeat recovered: age=") +
+                std::to_string(age) +
+                "ms beats=" +
+                std::to_string(HeartbeatCount()));
         }
 
-        vTaskDelay(kWatchPeriodMs);
+        vTaskDelay(config.watchdogPeriodMs);
     }
 
-    std::cout << "  -- [" << name << "] monitoring stopped (system inactive).\n";
+    SafeLogWrite(
+        "[PASS] Watchdog monitoring ended after producer completion.");
 }
