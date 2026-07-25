@@ -1,64 +1,98 @@
 #include "producer.h"
-#include "rtos_api.h"
+#include "heartbeat.h"
 #include "ipc.h"
 #include "messages.h"
+#include "rtos_api.h"
 #include "safe_log.h"
+#include "system_config.h"
+#include "system_stats.h"
+#include "timing.h"
 
 #include <string>
 
-namespace
+void SensorProducerTask(void*)
 {
-	constexpr int kMessages = 12;
-	constexpr uint32_t kPeriodMs = 100;
-	constexpr uint32_t kSendTimeoutMs = 2000;
-	constexpr int kPauseAfterSend = 6;
-	constexpr uint32_t kPauseMs = 1500;
-}
+    SafeLogTaskCompletionGuard logCompletion;
+    const auto& config = GetSystemConfig();
+    uint32_t nextReleaseTick = xTaskGetTickCount();
+    IntervalTimer intervalTimer;
 
-void SensorProducerTask(void *params)
-{
-	const char *name = params ? static_cast<const char *>(params) : "Producer";
+    for (int i = 0; i < config.messageCount; ++i)
+    {
+        const uint32_t now = xTaskGetTickCount();
+        const uint32_t interval = IntervalTimerUpdate(intervalTimer, now);
+        HeartbeatPublish(now);
 
-	for (int i = 0; i < kMessages; ++i)
-	{
-		SystemMessage msg;
-		msg.kind = MsgKind::Data;
-		msg.seq = static_cast<uint32_t>(i + 1);
-		msg.tick = xTaskGetTickCount();
-		msg.payload = static_cast<uint32_t>(20 + (i % 5));
+        SystemMessage message{};
+        message.kind = MsgKind::Data;
+        message.seq = static_cast<uint32_t>(i + 1);
+        message.tick = now;
+        message.payload = static_cast<uint32_t>(20 + (i % 5));
 
-		const uint32_t t0 = xTaskGetTickCount();
-		const int ok = IpcSend(msg, kSendTimeoutMs);
-		const uint32_t waited = xTaskGetTickCount() - t0;
+        const uint32_t sendStart = xTaskGetTickCount();
+        const int sent = IpcSend(message, config.sendTimeoutMs);
+        const uint32_t waited = xTaskGetTickCount() - sendStart;
 
-		if (!ok)
-		{
-			SafeLogWrite(std::string("[") + name + "] DROP seq-" + std::to_string(msg.seq) + " (queue full, send timed out)", 0);
-		}
-		else if (waited > 20)
-		{
-			SafeLogWrite(std::string("[") + name + "] sent seq-" + std::to_string(msg.seq) + " payload-" + std::to_string(msg.payload) + " <- backpressure: waited " + std::to_string(waited) + "ms for space", 0);
-		}
-		else
-		{
-			SafeLogWrite(std::string("[") + name + "] sent seq-" + std::to_string(msg.seq) + " payload-" + std::to_string(msg.payload), 0);
-		}
+        if (sent)
+        {
+            StatsRecordSend(waited);
 
-		vTaskDelay(kPeriodMs);
+            SafeLogWrite(
+                std::string("[PASS] Message sent: seq=") +
+                std::to_string(message.seq) +
+                " payload=" + std::to_string(message.payload) +
+                " send_wait=" + std::to_string(waited) + "ms" +
+                " interval=" +
+                (interval == 0
+                    ? std::string("n/a")
+                    : std::to_string(interval) + "ms") +
+                (interval == 0
+                    ? std::string("")
+                    : " jitter=" +
+                    std::to_string(
+                        TimingJitter(interval,
+                            config.producerPeriodMs)) +
+                    "ms"));
+        }
+        else
+        {
+            StatsRecordSendDrop(waited);
 
-		if (i + 1 == kPauseAfterSend)
-		{
-			SafeLogWrite(std::string("[") + name + "] pausing " + std::to_string(kPauseMs) + "ms (consumer will see a receive timeout)", 0);
-			vTaskDelay(kPauseMs);
-		}
-	}
+            SafeLogWrite(
+                std::string("[FAIL] Message dropped: seq=") +
+                std::to_string(message.seq) +
+                " queue remained full for " +
+                std::to_string(waited) + "ms");
+        }
 
+        const uint32_t lateness =
+            TimingDelayUntil(nextReleaseTick,
+                config.producerPeriodMs);
 
-	SystemMessage stop;
-	stop.kind = MsgKind::Stop;
-	stop.seq = 0;
-	stop.tick = xTaskGetTickCount();
-	stop.payload = 0;
-	IpcSend(stop, kSendTimeoutMs);
-	SafeLogWrite(std::string("[") + name + "] all data sent; STOP enqueued.", 0);
+        if (lateness > 0)
+        {
+            StatsRecordProducerDeadlineMiss(lateness);
+
+            SafeLogWrite(
+                std::string("[FAIL] Producer deadline missed: seq=") +
+                std::to_string(message.seq) +
+                " late_by=" + std::to_string(lateness) + "ms");
+        }
+    }
+
+    SystemMessage stop{};
+    stop.kind = MsgKind::Stop;
+    stop.tick = xTaskGetTickCount();
+
+    while (!IpcSend(stop, 1000))
+    {
+        SafeLogWrite(
+            "[FAIL] STOP message could not be queued because the IPC queue "
+            "remained full; retrying.");
+    }
+
+    SafeLogWrite(
+        "[PASS] Producer work completed and the STOP message was queued.");
+
+    HeartbeatSetActive(false);
 }
