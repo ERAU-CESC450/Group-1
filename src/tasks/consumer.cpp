@@ -1,53 +1,65 @@
 #include "consumer.h"
-#include "rtos_api.h"
 #include "ipc.h"
+#include "isr.h"
 #include "messages.h"
+#include "rtos_api.h"
 #include "safe_log.h"
+#include "system_config.h"
+#include "system_stats.h"
 
 #include <string>
 
-namespace
+void LoggerConsumerTask(void*)
 {
-	constexpr uint32_t kRecvTimeoutMs = 400;
-	constexpr uint32_t kProcessMs = 250;
-}
+    SafeLogTaskCompletionGuard logCompletion;
+    const auto& config = GetSystemConfig();
 
-void LoggerConsumerTask(void* params)
-{
-	const char* name = params ? static_cast<const char*>(params) : "Consumer";
-	int received = 0;
-	int timeouts = 0;
+    for (;;)
+    {
+        SystemMessage message{};
 
-	for (;;)
-	{
-		SystemMessage msg;
-		const int ok = IpcReceive(msg, kRecvTimeoutMs);
+        if (!IpcReceive(message, config.receiveTimeoutMs))
+        {
+            StatsRecordReceiveTimeout();
 
-		if (!ok)
-		{
-			++timeouts;
-			SafeLogWrite(std::string("   [") + name + "] receive timed out (" + std::to_string(kRecvTimeoutMs) + "ms) - waiting for producer...", 0);
-			continue;
-		}
+            SafeLogWrite(
+                std::string("[FAIL] IPC receive timed out after ") +
+                std::to_string(config.receiveTimeoutMs) + "ms");
 
-		if (msg.kind == MsgKind::Stop)
-		{
-			SafeLogWrite(std::string("   [") + name + "] STOP received; processed " + std::to_string(received) + " messages, " + std::to_string(timeouts) + " receive timeouts.", 0);
-			break;
-		}
+            continue;
+        }
 
-		++received;
+        if (message.kind == MsgKind::Stop)
+        {
+            SafeLogWrite(
+                "[PASS] STOP message received; no additional IPC data is "
+                "expected.");
 
-		const uint32_t now = xTaskGetTickCount();
-		const uint32_t latency = now - msg.tick;
+            IsrRequestHandlerStop();
+            break;
+        }
 
-		SafeLogWrite(
-			std::string("   [") + name +
-			"] received seq-" + std::to_string(msg.seq) +
-			" payload-" + std::to_string(msg.payload) +
-			" latency=" + std::to_string(latency) + "ms",
-			0);
+        const uint32_t latency =
+            xTaskGetTickCount() - message.tick;
 
-		vTaskDelay(kProcessMs);
-	}
+        StatsRecordReceive(latency);
+
+        const bool highLatency =
+            latency > config.highLatencyThresholdMs;
+
+        if (highLatency)
+        {
+            IsrSignalHighLatencyFromIsr(latency);
+        }
+
+        SafeLogWrite(
+            std::string(highLatency
+                ? "[FAIL] Message received with high latency: seq="
+                : "[PASS] Message received: seq=") +
+            std::to_string(message.seq) +
+            " payload=" + std::to_string(message.payload) +
+            " latency=" + std::to_string(latency) + "ms");
+
+        vTaskDelay(config.consumerProcessMs);
+    }
 }
