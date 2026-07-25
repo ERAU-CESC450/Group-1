@@ -1,166 +1,189 @@
-/*#include "rtos_api.h"
 #include "isr.h"
-#include "../shared/safe_log.h"
-
-
-#include <string>
-
-void isr_signal(int latency)
-{
-	SafeLogWrite(std::string("\n        =========High Latency Detected : ") + std::to_string(latency) + "ms == flagging for protocol============\n", 0);
-
-	vTaskDelay(50);
-}*/
-#include "isr.h"//M7 Tyler update 
-
 #include "rtos_api.h"
 #include "safe_log.h"
+#include "system_config.h"
+#include "system_stats.h"
 
-#include <cstdint>
 #include <string>
 
 namespace
 {
-	constexpr uint32_t kEventCount = 5;
-	constexpr uint32_t kHandlerTimeoutMs = 2000;
-	constexpr uint32_t kProcessingTimeMs = 75;
+    enum class EventKind : uint32_t
+    {
+        HighLatency,
+        ExternalPulse,
+        Stop
+    };
 
-	SemaphoreHandle_t g_eventSemaphore = nullptr;
+    struct SystemEvent
+    {
+        EventKind kind;
+        uint32_t tick;
+        uint32_t value;
+    };
 
-	// -----------------------------------------------------------------------------
-	// ISR-equivalent
-	// -----------------------------------------------------------------------------
-	//
-	// This function represents the interrupt service routine.
-	//
-	// ISR discipline:
-	// - no logging
-	// - no delay
-	// - no blocking
-	// - no application processing
-	//
-	// It only records the occurrence by giving the semaphore.
-	//
-	int SimulatedInterruptHandler()
-	{
-		return xSemaphoreGiveFromISR(
-			g_eventSemaphore);
-	}
+    QueueHandle_t g_eventQueue = nullptr;
+    SemaphoreHandle_t g_eventReady = nullptr;
+
+    bool SignalFromIsr(EventKind kind, uint32_t value)
+    {
+        if (!g_eventQueue || !g_eventReady)
+        {
+            StatsRecordEventSignal(false);
+            return false;
+        }
+
+        const SystemEvent event{
+            kind,
+            xTaskGetTickCount(),
+            value
+        };
+
+        // ISR-style work remains short and bounded:
+        // 1. The event data is placed in the queue without blocking.
+        // 2. The counting semaphore wakes the deferred handler task.
+        // 3. No logging, delay, or extended processing occurs here.
+        const bool queued =
+            xQueueSend(g_eventQueue, &event, 0) != 0;
+
+        const bool signaled =
+            queued &&
+            xSemaphoreGiveFromISR(g_eventReady) != 0;
+
+        const bool passed = queued && signaled;
+        StatsRecordEventSignal(passed);
+        return passed;
+    }
 }
 
-bool InterruptSystemInit()
+int IsrInit(uint32_t eventQueueLength)
 {
-	// The semaphore can store all five simulated events
-	// even if several arrive before the task processes them.
-	g_eventSemaphore =
-		xSemaphoreCreateCounting(
-			8,
-			0);
+    g_eventQueue =
+        xQueueCreate(eventQueueLength, sizeof(SystemEvent));
 
-	return g_eventSemaphore != nullptr;
+    g_eventReady =
+        xSemaphoreCreateCounting(eventQueueLength, 0);
+
+    if (!g_eventQueue || !g_eventReady)
+    {
+        vQueueDelete(g_eventQueue);
+        vSemaphoreDelete(g_eventReady);
+
+        g_eventQueue = nullptr;
+        g_eventReady = nullptr;
+        return 0;
+    }
+
+    return 1;
 }
 
-void InterruptSystemShutdown()
+void IsrShutdown()
 {
-	vSemaphoreDelete(g_eventSemaphore);
-	g_eventSemaphore = nullptr;
+    vSemaphoreDelete(g_eventReady);
+    vQueueDelete(g_eventQueue);
+
+    g_eventReady = nullptr;
+    g_eventQueue = nullptr;
 }
 
-void SimulatedEventSourceTask(void *)
+bool IsrSignalHighLatencyFromIsr(uint32_t latencyMs)
 {
-	// Uneven intervals demonstrate an asynchronous event source
-	// that is independent of the producer and consumer loops.
-	const uint32_t eventIntervalsMs[kEventCount] =
-		{
-			700,
-			1100,
-			450,
-			1300,
-			600};
-
-	for (uint32_t eventNumber = 1;
-		 eventNumber <= kEventCount;
-		 ++eventNumber)
-	{
-		vTaskDelay(
-			eventIntervalsMs[eventNumber - 1]);
-
-		const uint32_t triggerTick =
-			xTaskGetTickCount();
-
-		const uint32_t isrStartTick =
-			xTaskGetTickCount();
-
-		const int signalResult =
-			SimulatedInterruptHandler();
-
-		const uint32_t isrDuration =
-			xTaskGetTickCount() - isrStartTick;
-
-		// These logs occur after the ISR-equivalent returns.
-		// They are not inside the ISR.
-		SafeLogWrite(
-			"[EVENT SOURCE] asynchronous event " +
-			std::to_string(eventNumber) +
-			" triggered at tick=" +
-			std::to_string(triggerTick));
-
-		SafeLogWrite(
-			"[EVENT SOURCE] ISR returned; duration=" +
-			std::to_string(isrDuration) +
-			"ms; ISR-safe semaphore=" +
-			std::string(
-				signalResult ? "GIVEN" : "FULL"));
-	}
-
-	SafeLogWrite(
-		"[EVENT SOURCE] all simulated interrupts generated.");
+    return SignalFromIsr(EventKind::HighLatency, latencyMs);
 }
 
-void InterruptEventHandlerTask(void *)
+bool IsrSignalExternalPulseFromIsr(uint32_t pulseNumber)
 {
-	uint32_t handledEvents = 0;
+    return SignalFromIsr(EventKind::ExternalPulse, pulseNumber);
+}
 
-	while (handledEvents < kEventCount)
-	{
-		const int eventReceived =
-			xSemaphoreTake(
-				g_eventSemaphore,
-				kHandlerTimeoutMs);
+void IsrRequestHandlerStop()
+{
+    if (!g_eventQueue || !g_eventReady)
+        return;
 
-		if (!eventReceived)
-		{
-			SafeLogWrite(
-				"[EVENT TASK] waiting for asynchronous event...");
+    const SystemEvent stop{
+        EventKind::Stop,
+        xTaskGetTickCount(),
+        0
+    };
 
-			continue;
-		}
+    while (!xQueueSend(g_eventQueue, &stop, 100))
+        taskYIELD();
 
-		++handledEvents;
+    // This function runs in task context, so the normal give is used.
+    while (!xSemaphoreGive(g_eventReady))
+        taskYIELD();
+}
 
-		const uint32_t processingStart =
-			xTaskGetTickCount();
+void EventHandlerTask(void*)
+{
+    SafeLogTaskCompletionGuard logCompletion;
+    const auto& config = GetSystemConfig();
 
-		SafeLogWrite(
-			"[EVENT TASK] received event " +
-			std::to_string(handledEvents) +
-			" at tick=" +
-			std::to_string(processingStart) +
-			"; processing in task context.");
+    for (;;)
+    {
+        // The counting semaphore blocks the task until an event is ready.
+        if (!xSemaphoreTake(g_eventReady,
+            config.eventReceiveTimeoutMs))
+        {
+            continue;
+        }
 
-		// This represents meaningful processing.
-		// It is permitted here because this is task context,
-		// not interrupt context.
-		vTaskDelay(kProcessingTimeMs);
+        SystemEvent event{};
 
-		SafeLogWrite(
-			"[EVENT TASK] completed processing for event " +
-			std::to_string(handledEvents) +
-			" at tick=" +
-			std::to_string(
-				xTaskGetTickCount()));
-	}
+        if (!xQueueReceive(g_eventQueue, &event, 0))
+        {
+            SafeLogWrite(
+                "[FAIL] Counting semaphore was released without a matching "
+                "queued event.");
+            continue;
+        }
 
-	SafeLogWrite(
-		"[EVENT TASK] all asynchronous events handled.");
+        if (event.kind == EventKind::Stop)
+        {
+            SafeLogWrite(
+                "[PASS] Deferred event handler received its stop event.");
+            break;
+        }
+
+        StatsRecordEventHandled();
+
+        if (event.kind == EventKind::HighLatency)
+        {
+            SafeLogWrite(
+                std::string("[FAIL] High-latency event handled outside ISR context: ") +
+                std::to_string(event.value) +
+                "ms, signaled_at_tick=" +
+                std::to_string(event.tick));
+        }
+        else
+        {
+            SafeLogWrite(
+                std::string("[PASS] External pulse handled outside ISR context: pulse=") +
+                std::to_string(event.value) +
+                " signaled_at_tick=" +
+                std::to_string(event.tick));
+        }
+    }
+}
+
+void EventGeneratorTask(void*)
+{
+    SafeLogTaskCompletionGuard logCompletion;
+    const auto& config = GetSystemConfig();
+
+    for (int i = 1; i <= config.externalEventCount; ++i)
+    {
+        vTaskDelay(config.externalEventPeriodMs);
+
+        const bool passed =
+            IsrSignalExternalPulseFromIsr(
+                static_cast<uint32_t>(i));
+
+        SafeLogWrite(
+            std::string(passed
+                ? "[PASS] External pulse signaled through the event queue and counting semaphore: pulse="
+                : "[FAIL] External pulse could not be queued or signaled: pulse=") +
+            std::to_string(i));
+    }
 }
