@@ -133,7 +133,7 @@ int main(int argc, char* argv[])
     SetSystemConfig(&config);
 
     std::cout << "=====================================================\n"
-        << "CESC 450 Module 8 Integration and Stabilization\n"
+        << "CESC 450 Group 1 Embedded Systems Project\n"
         << "=====================================================\n";
 
     PrintConfiguration(config);
