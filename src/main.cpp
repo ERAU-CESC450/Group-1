@@ -88,7 +88,7 @@ namespace
             eventPassed &&
             loggingPassed;
 
-        std::cout << "\n================ MODULE 8 SUMMARY ================\n"
+        std::cout << "\n================ Project Summary ================\n"
             << "run_configuration=" << config.modeName << '\n'
             << "overall_result=" << Result(overallPassed) << '\n'
             << "ipc_result=" << Result(ipcPassed)
@@ -173,7 +173,7 @@ int main(int argc, char* argv[])
 
     if (!created)
     {
-        std::cerr << "[FAIL] One or more tasks could not be created.\n";
+        std::cerr << "Task could not be completed, Please Try Again.\n";
 
         IpcShutdown();
         IsrShutdown();
@@ -182,9 +182,7 @@ int main(int argc, char* argv[])
     }
 
     SafeLogWrite(
-        "[PASS] Scheduler started with tasks, timing, IPC, asynchronous logging, "
-        "mutex protection, counting-semaphore signaling, watchdog monitoring, "
-        "and deferred events.");
+        " Scheduler started \n");
 
     vTaskStartScheduler();
 
